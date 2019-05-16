@@ -598,6 +598,7 @@ func (db *DB) tableRangeCompaction(level int, umin, umax []byte) error {
 		}
 	} else {
 		// Retry until nothing to compact.
+		didcompact := false
 		for {
 			compacted := false
 
@@ -615,12 +616,23 @@ func (db *DB) tableRangeCompaction(level int, umin, umax []byte) error {
 			for level := 0; level < m; level++ {
 				if c := db.s.getCompactionRange(level, umin, umax, false); c != nil {
 					db.tableCompaction(c, true)
+					didcompact = true
 					compacted = true
 				}
 			}
 
 			if !compacted {
 				break
+			}
+		}
+
+		// Attempt compaction on lowest level of tables if there are more than 1
+		v := db.s.version()
+		v.release()
+		m := len(v.levels) - 1
+		if !didcompact && m > 0 && len(v.levels[m]) > 1 {
+			if c := db.s.getCompactionRange(m, umin, umax, false); c != nil {
+				db.tableCompaction(c, true)
 			}
 		}
 	}
